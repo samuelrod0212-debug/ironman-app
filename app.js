@@ -292,12 +292,32 @@ async function stravaCallback(){
   if (!q.has("code") && !q.has("error")) return false;
   history.replaceState(null, "", location.pathname);
   if (q.get("error")) { toast("Strava connection cancelled"); return true; }
-  if (q.get("state") !== sv.oauthState) { toast("Strava sign-in didn't match. Try again."); return true; }
   if (!/activity:read/.test(q.get("scope") || "")) { toast("Allow activity access so the app can read your workouts"); return true; }
-  try { await tokenCall({code:q.get("code"), grant_type:"authorization_code"}); delete sv.oauthState; saveSv(); toast("Strava connected"); tab = "progress"; await stravaSync(true); }
-  catch(e) { toast(e.message); }
-  render(false);
+  if (!sv.secret || q.get("state") !== sv.oauthState) {
+    // iPhone: Strava sent us back to Safari, which can't see the home-screen app's storage. Hand the code over by copy-paste.
+    showCode(q.get("code"));
+    return true;
+  }
+  await finishConnect(q.get("code"));
   return true;
+}
+async function finishConnect(code){
+  try { await tokenCall({code, grant_type:"authorization_code"}); delete sv.oauthState; delete sv.pending; saveSv(); toast("Strava connected"); tab = "progress"; render(false); await stravaSync(true); }
+  catch(e) { toast(e.message + ". Tap Connect Strava to get a fresh code."); render(false); }
+}
+function showCode(code){
+  view.innerHTML = `<section class="card hero settings"><span class="label">Almost done</span><h2>Copy this code</h2>
+    <p class="hint">Strava opened Safari instead of your app. Copy this code, open the <b style="color:var(--ink)">140.6</b> app from your home screen, go to <b style="color:var(--ink)">Progress → Strava</b> and paste it. Do it within a few minutes, the code expires.</p>
+    <input class="note" readonly value="${esc(code)}" id="codeBox">
+    <div class="btns"><button class="btn primary" data-act="copycode">Copy code</button></div></section>`;
+  document.getElementById("viewTitle").textContent = "Strava";
+}
+function pasteCode(){
+  const raw = (document.getElementById("pasteBox") || {}).value || "";
+  let code = raw.trim(); const m = code.match(/[?&]code=([^&\s]+)/); if (m) code = m[1];
+  if (!sv.id || !sv.secret) { toast("Add your Client ID and Secret first"); return; }
+  if (!/^[0-9a-f]{20,}$/i.test(code)) { toast("That doesn't look like a Strava code"); return; }
+  finishConnect(code);
 }
 async function api(path){
   if (!sv.expires || sv.expires * 1000 < Date.now() + 120000) await tokenCall({refresh_token:sv.refresh, grant_type:"refresh_token"});
@@ -362,7 +382,10 @@ function extrasSettings(){
         <label>Client ID<input inputmode="numeric" autocomplete="off" data-sv="id" value="${esc(sv.id || "")}"></label>
         <label>Client Secret<input type="password" autocomplete="off" data-sv="secret" value="${esc(sv.secret || "")}"></label>
       </div>
-      <div class="btns"><button class="btn primary" data-act="sconn">Connect Strava</button></div>`}
+      <div class="btns"><button class="btn primary" data-act="sconn">Connect Strava</button></div>
+      <p class="hint">On iPhone, Strava sends you back to Safari with a code. Copy it there, come back here and paste it:</p>
+      <div class="fields"><label style="grid-column:1/-1">Code from Strava<input id="pasteBox" autocomplete="off" placeholder="Paste code"></label></div>
+      <div class="btns"><button class="btn" data-act="spaste">Finish connecting</button></div>`}
   </section>`;
 }
 function extrasClick(b){
@@ -370,6 +393,8 @@ function extrasClick(b){
   const a = b.dataset.act;
   if (a === "remind") { downloadReminders(); return true; }
   if (a === "sconn") { stravaConnect(); return true; }
+  if (a === "spaste") { pasteCode(); return true; }
+  if (a === "copycode") { const v = document.getElementById("codeBox").value; (navigator.clipboard ? navigator.clipboard.writeText(v) : Promise.reject()).then(() => toast("Copied. Now open the 140.6 app."), () => { const el = document.getElementById("codeBox"); el.select(); document.execCommand("copy"); toast("Copied"); }); return true; }
   if (a === "ssync") { stravaSync(true); return true; }
   if (a === "sdisc") { stravaDisconnect(); return true; }
   return false;

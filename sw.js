@@ -1,5 +1,5 @@
 // Offline cache. Bump VERSION whenever any file changes so phones pick up the update.
-const VERSION = "v2";
+const VERSION = "v3";
 const CACHE = "ironman140-" + VERSION;
 const FILES = ["./", "index.html", "style.css", "plan.js", "app.js", "manifest.webmanifest",
   "icons/icon-192.png", "icons/icon-512.png", "icons/icon-maskable-512.png", "icons/apple-touch-icon.png"];
